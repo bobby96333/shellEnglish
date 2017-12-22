@@ -15,10 +15,16 @@ const LISTEN_TYPE_IPA string = "ipa"
 const LISTEN_TYPE_KK string = "kk"
 
 var listen_type = LISTEN_TYPE_KK
+var delWords *learn_lib.WordMem
+
+func main_init() {
+	delWords = &learn_lib.WordMem{}
+	delWords.Init("/tmp/dict/del.txt")
+}
 
 func main() {
 	fmt.Println("welcome to bobby leaning...")
-
+	main_init()
 	listen_type_arg := flag.String("listen", "kk", "kk or ipa")
 
 	flag.Parse()
@@ -44,13 +50,24 @@ func main() {
 		str = strings.Replace(str, "\r", "", -1)
 		words_slice := strings.Split(str, " ")
 
-		//去重，去空白
 		for i1, word := range words_slice {
+			//去空白
 			if strings.TrimSpace(word) == "" {
 				continue
 			}
+			//去己删除的
+			if delWords.Exists(word) {
+				continue
+			}
+
+			//检查是不是单词
+			if !learn_lib.IsEnglishWord(word) {
+				continue
+			}
+
 			repeat := false
 			i2 := 0
+			//去去重
 			for e := words.Front(); e != nil; e = e.Next() {
 				word2 := e.Value.(string)
 				if i1 != i2 && word2 == word {
@@ -92,8 +109,12 @@ func main() {
 			if input == ":past" {
 				continue
 			} else if input == ":del" {
+				delWords.Append(word)
+				delWords.Flush()
 				olde := e
-				e = e.Prev()
+				if e.Prev() != nil {
+					e = e.Prev()
+				}
 				words.Remove(olde)
 				continue
 			} else if input == ":info" {
