@@ -8,6 +8,7 @@ import (
 	"learn_lib"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -26,7 +27,7 @@ func main() {
 	fmt.Println("welcome to bobby leaning...")
 	main_init()
 	listen_type_arg := flag.String("listen", "kk", "kk or ipa")
-
+	flag.Usage = falg_usage
 	flag.Parse()
 	listen_type = *listen_type_arg
 
@@ -46,8 +47,36 @@ func main() {
 			panic(err)
 		}
 		str := string(bs)
+
+		//cut text
+
+		start := strings.Index(str, "#start")
+		if start != -1 {
+			start += len("#start")
+			str = str[start:]
+		}
+
+		end := strings.Index(str, "#end")
+		if end != -1 {
+			str = str[:end]
+		}
+
+		//replace first upper case to lower case
+		regcmp, _ := regexp.Compile("(?m)^([A-Z])[a-z]")
+		indexs := regcmp.FindAllStringSubmatchIndex(str, -1)
+		for _, indexRange := range indexs {
+			stri := indexRange[2]
+			wordStr := strings.ToLower(string(str[stri]))
+			bs := []byte(str)
+			bs[stri] = wordStr[0]
+			str = string(bs)
+		}
+
+		//replace wrap to space
 		str = strings.Replace(str, "\n", " ", -1)
 		str = strings.Replace(str, "\r", "", -1)
+		//get words
+
 		words_slice := strings.Split(str, " ")
 
 		for i1, word := range words_slice {
@@ -141,6 +170,22 @@ func main() {
 				}
 				fmt.Print("\n")
 				goto reinput
+			} else if input == ":list" {
+
+				for e := words.Front(); e != nil; e = e.Next() {
+					word := e.Value.(string)
+					dictr := dict.See(word)
+					wordinfo := word
+					if listen_type == LISTEN_TYPE_IPA {
+						wordinfo += " " + dictr.IPA
+					} else if listen_type == LISTEN_TYPE_KK {
+						wordinfo += " " + dictr.KK
+					}
+					wordinfo += "\n   " + strings.Replace(dictr.Description, "\n", "\n   ", -1)
+					fmt.Println(wordinfo)
+				}
+				fmt.Print("\n")
+				goto reinput
 			}
 
 			if strings.TrimSpace(strings.ToLower(input)) == strings.TrimSpace(strings.ToLower(dictr.Word)) {
@@ -151,6 +196,25 @@ func main() {
 		}
 	}
 
+}
+
+func falg_usage() {
+
+	fmt.Println(`命令参数:
+	--help 查看帮助
+	--listen  kk是美语发音 ipa是英式发音
+输入指令：
+	:del 删除当前单词
+	:kk 显示美音音标
+	:ipa 显示英式音标
+	:listen 重读
+	:all  显示还有多少单词
+	:list 显示词汇列表，可打印用于后期记忆
+文本标记：
+	#begin  取文本中的开始位置
+	#end    取广西的结束位置
+		
+`)
 }
 func listen(url string) {
 	if url == "" {
