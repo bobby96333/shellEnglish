@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 const LISTEN_TYPE_IPA string = "ipa"
@@ -18,9 +19,26 @@ const LISTEN_TYPE_KK string = "kk"
 var listen_type = LISTEN_TYPE_KK
 var delWords *learn_lib.WordMem
 
+type globalStruct struct{
+	sentenceObj *learn_lib.Sentence
+	lastSentence string
+	listenMutex sync.Mutex
+}
+
+var Global = &globalStruct{
+	sentenceObj:new (learn_lib.Sentence),
+	lastSentence: "",
+}
+
 func main_init() {
 	delWords = &learn_lib.WordMem{}
 	delWords.Init("/tmp/dict/del.txt")
+	Global.sentenceObj.Init()
+}
+
+type ReadWordInfo struct{
+	Sentence string
+	Word string
 }
 
 func main() {
@@ -34,8 +52,8 @@ func main() {
 	fmt.Println("listen type:", listen_type)
 
 	dict := new(learn_lib.Dict)
-	var words *list.List
-	words = list.New()
+
+	words := list.New()
 
 	if len(flag.Args()) > 0 {
 		f, err := os.Open(flag.Arg(0))
@@ -73,42 +91,63 @@ func main() {
 		}
 
 		//replace wrap to space
-		str = strings.Replace(str, "\n", " ", -1)
 		str = strings.Replace(str, "\r", "", -1)
+		str = strings.Replace(str, ".", "\n", -1)
+		str = strings.Replace(str, "。", "\n", -1)
+		str = strings.Replace(str, ",", "\n", -1)
+		str = strings.Replace(str, "，", "\n", -1)
+		str = strings.Replace(str, "?", "\n", -1)
+		str = strings.Replace(str, "？", "\n", -1)
+		str = strings.Replace(str, "!", "\n", -1)
+		str = strings.Replace(str, "！", "\n", -1)
+		str = strings.Replace(str, ":", "\n", -1)
+		str = strings.Replace(str, "：", "\n", -1)
+		str = strings.Replace(str, "；", "\n", -1)
+		str = strings.Replace(str, ";", "\n", -1)
+
+		sentences := strings.Split(str,"\n");
+		//str = strings.Replace(str, "\n", " ", -1)
+
 		//get words
+		for _,sentence := range sentences {
 
-		words_slice := strings.Split(str, " ")
+			words_slice := strings.Split(sentence, " ")
 
-		for i1, word := range words_slice {
-			//去空白
-			if strings.TrimSpace(word) == "" {
-				continue
-			}
-			//去己删除的
-			if delWords.Exists(word) {
-				continue
-			}
-
-			//检查是不是单词
-			if !learn_lib.IsEnglishWord(word) {
-				continue
-			}
-
-			repeat := false
-			i2 := 0
-			//去去重
-			for e := words.Front(); e != nil; e = e.Next() {
-				word2 := e.Value.(string)
-				if i1 != i2 && word2 == word {
-					repeat = true
-					break
+			for i1, word := range words_slice {
+				//去空白
+				if strings.TrimSpace(word) == "" {
+					continue
 				}
-				i2++
+				//去己删除的
+				if delWords.Exists(word) {
+					continue
+				}
+
+				//检查是不是单词
+				if !learn_lib.IsEnglishWord(word) {
+					continue
+				}
+
+				repeat := false
+				i2 := 0
+				//去去重
+				for e :=words.Front();e!=nil;e=e.Next() {
+					word2 := (e.Value.(*ReadWordInfo).Word)
+					if i1 != i2 && word2 == word {
+						repeat = true
+						break
+					}
+					i2++
+				}
+				if repeat {
+					continue
+				}
+
+				wordInfo:=new(ReadWordInfo);
+				wordInfo.Word=word
+				wordInfo.Sentence=sentence
+				words.PushBack(wordInfo)
 			}
-			if repeat {
-				continue
-			}
-			words.PushBack(word)
 		}
 
 	} else {
@@ -121,8 +160,16 @@ func main() {
 		if words.Len() == 0 {
 			break
 		}
-		for e := words.Front(); e != nil; e = e.Next() {
-			word := e.Value.(string)
+		for e :=words.Front();e!=nil;e=e.Next(){
+			wordInfo:=e.Value.(*ReadWordInfo)
+
+			if Global.lastSentence == "" || wordInfo.Sentence != Global.lastSentence {
+				Global.lastSentence=wordInfo.Sentence
+				Global.sentenceObj.Seek(wordInfo.Sentence,func(result *learn_lib.SentenceResult){
+					listen(result.LocalMedia)
+				})
+			}
+			word := wordInfo.Word
 			if strings.TrimSpace(word) == "" {
 				words.Remove(e)
 			}
@@ -172,7 +219,7 @@ func main() {
 				goto reinput
 			} else if input == ":list" {
 
-				for e := words.Front(); e != nil; e = e.Next() {
+				for e := words.Front(); e.Value != nil; e = e.Next() {
 					word := e.Value.(string)
 					dictr := dict.See(word)
 					wordinfo := word
@@ -221,6 +268,8 @@ func listen(url string) {
 		fmt.Println("no found voice url")
 		return
 	}
+	Global.listenMutex.Lock();
+	defer Global.listenMutex.Unlock()
 	cmd := exec.Command("mplayer", url)
 	cmd.Wait()
 	cmd.Output()

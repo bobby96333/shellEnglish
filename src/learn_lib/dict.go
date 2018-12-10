@@ -27,7 +27,7 @@ type DictResult struct {
 	Status      int
 }
 
-func (this Dict) ExistsFile(path string) bool {
+func ExistsFile(path string) bool {
 	_, err := os.Stat(path)
 	if err == nil {
 		return true
@@ -41,12 +41,12 @@ func (this Dict) ExistsFile(path string) bool {
 func (this Dict) See(word string) *DictResult {
 	md5code := fmt.Sprintf("%x", md5.Sum([]byte(word)))
 	fpath := "/tmp/dict"
-	if !this.ExistsFile(fpath) {
+	if !ExistsFile(fpath) {
 		os.Mkdir(fpath, 755)
 	}
 	fpath = fmt.Sprintf("%s/%s.json", fpath, md5code)
 	var ret *DictResult
-	if this.ExistsFile(fpath) {
+	if ExistsFile(fpath) {
 		handler, err := os.Open(fpath)
 		defer handler.Close()
 		if err != nil {
